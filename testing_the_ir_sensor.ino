@@ -10,25 +10,31 @@
 #define IN4 10
 #define ENB 6
 
-#define IR QTRNoEmitterPin
+//#define IR QTRNoEmitterPin
 
 
 QTRSensors qtr;
 
 // PID properties
-const double Kp = 1 ;
-const double Kd = 0;
+const double Kp = 0.2 ;
+const double Kd = 0.002;
 const double ki = 0;
 const double Goal = 3500;
 
 double lastError = 0;
 int baseSpeed = 100;
 
+//flags
+int inters;
+int edge;
+
 const uint8_t SensorCount = 8;
 uint16_t sensorValues[SensorCount];
 
 void setup()
 {
+  Serial.begin(115200);
+
   // configure the motors
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
@@ -40,19 +46,20 @@ void setup()
   // configure the sensors
   qtr.setTypeAnalog();
   qtr.setSensorPins((const uint8_t[]){A7, A6, A5, A4, A3, A2, A1, A0}, SensorCount);
-  qtr.setEmitterPin(IR);
+  //qtr.setSamplesPerSensor(3);
 
   calibration();
   // print the calibration minimum values measured when emitters were on
-  
+  /*
   for (uint8_t i = 0; i < SensorCount; i++)
   {
     Serial.print(qtr.calibrationOn.minimum[i]);
     Serial.print(' ');
   }
-  Serial.println();
+  Serial.println()*/
 
   // print the calibration maximum values measured when emitters were on
+  /*
   for (uint8_t i = 0; i < SensorCount; i++)
   {
     Serial.print(qtr.calibrationOn.maximum[i]);
@@ -60,41 +67,44 @@ void setup()
   }
   Serial.println();
   Serial.println();
+  */
   delay(1000);
 }
 
 void loop()
 {
-  // read calibrated sensor values and obtain a measure of the line position
-  // from 0 to 5000 (for a white line, use readLineWhite() instead)
+  int blackCount = 0;
+
+  uint16_t positionW = qtr.readLineWhite(sensorValues);
   uint16_t position = qtr.readLineBlack(sensorValues);
 
-  
   int error = position - Goal;
-   // tuning needed
-  float adjustment = Kp * error + Kd*(error - lastError);
-  
-  lastError = error;
-
-  // print the sensor values as numbers from 0 to 1000, where 0 means maximum
-  // reflectance and 1000 means minimum reflectance, followed by the line
-  // position
+  float adjustment = Kp * error + Kd*(error - lastError);  
   
   for (uint8_t i = 0; i < SensorCount; i++)
   {
+    if(sensorValues[i]<850){sensorValues[i]=0;}
     Serial.print(sensorValues[i]);
     Serial.print('\t');
   }
   float leftSpeed = baseSpeed + adjustment;
   float rightSpeed = baseSpeed - adjustment;
 
-  /*if(position==7000) {
+
+  //if(sensorValues[0]==sensorValues[1]==sensorValues[2]==sensorValues[3]==sensorValues[4]==sensorValues[5]==sensorValues[6]==sensorValues[7])
+
+  /*if(abs(error) >= 400 && abs(error) <= 1000){edge = 1;}
+
+  if (sensorValues[0]<=100 && sensorValues[1]<=100 && sensorValues[2]<=100 && sensorValues[3]<=100 && sensorValues[4]<=100 && sensorValues[5]<=100 && sensorValues[6]<=100 && sensorValues[7]<=100&& edge==1) {
     sharpturn();
+    Serial.println("Sharp turn triggered !!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    edge = 0;
   }*/
-
-  setMotorLeft(leftSpeed);
-  setMotorRight(rightSpeed);
-
+  //
+  else {
+    setMotorLeft(leftSpeed);
+    setMotorRight(rightSpeed);
+  //}
   
   Serial.print(" | Position: ");
   Serial.print(position);
@@ -105,6 +115,7 @@ void loop()
   Serial.print(" R: ");
   Serial.println(rightSpeed);
   
+  lastError = error;
 }
 
 
@@ -117,7 +128,7 @@ void setMotorLeft(int speed) {
     digitalWrite(IN2, HIGH);
     speed = -speed;
   }
-  analogWrite(ENA, constrain(speed, 90, 90));
+  analogWrite(ENA, constrain(speed, 0, 80));
 }
 
 void setMotorRight(int speed) {
@@ -129,43 +140,41 @@ void setMotorRight(int speed) {
     digitalWrite(IN4, HIGH);
     speed = -speed;
   }
-  analogWrite(ENB, constrain(speed, 90, 90));
+  analogWrite(ENB, constrain(speed, 0, 80));
 }
 
 void calibration () {
-  delay(500);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH); // turn on Arduino's LED to indicate we are in calibration mode
-  Serial.begin(9600);
   // 2.5 ms RC read timeout (default) * 10 reads per calibrate() call 
 
   // = ~25 ms per calibrate() call.
   // Call calibrate() 400 times to make calibration take about 10 seconds.
   Serial.println("calibration started");
-  for (uint16_t i = 0; i < 300; i++)
+  for (uint16_t i = 0; i < 400; i++)
   {
     qtr.calibrate();
   }
   digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
   Serial.println("calibration Ended");
+  delay(500);
 }
 
 void sharpturn() {
-  if (lastError > 0) {
-    // Turn right to find the line (means line was more to the right before losing it)
-    digitalWrite(IN1, HIGH);  // left motor forward
-    digitalWrite(IN2, LOW);
-    digitalWrite(IN3, LOW);   // right motor reverse
-    digitalWrite(IN4, HIGH);
+  uint32_t startTime = millis();
+  int turnSpeed = 255;
+  if (lastError < 0) {
+    digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
   } else {
-    // Turn left to find the line
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, HIGH);
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
+    digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
   }
+  analogWrite(ENA, turnSpeed);
+  analogWrite(ENB, turnSpeed);
 
-  analogWrite(ENA, 90);  // You can tune the turning speed
-  analogWrite(ENB, 90);
-  delay(250);  // Time to spin - adjust based on turning capability
+  while (millis() - startTime < 500) { // Max 500ms turn
+    uint16_t position = qtr.readLineBlack(sensorValues);
+    if (position > 2000 && position < 5000) break; // Line found
+  }
 }
