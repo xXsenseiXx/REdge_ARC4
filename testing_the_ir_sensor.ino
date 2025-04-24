@@ -10,14 +10,14 @@
 #define IN4 10
 #define ENB 6
 
-//#define IR QTRNoEmitterPin
-
+bool allWhite = true;
+bool allBlack = true;
 
 QTRSensors qtr;
 
 // PID properties
-const double Kp = 0.2 ;
-const double Kd = 0.002;
+const double Kp = 0.19 ;
+const double Kd = 0.001;
 const double ki = 0;
 const double Goal = 3500;
 
@@ -27,6 +27,12 @@ int baseSpeed = 100;
 //flags
 int inters;
 int edge;
+
+//ultrasonic distance
+double front_obst;
+double right_obst;
+double left_obst;
+
 
 const uint8_t SensorCount = 8;
 uint16_t sensorValues[SensorCount];
@@ -73,9 +79,8 @@ void setup()
 
 void loop()
 {
-  int blackCount = 0;
 
-  uint16_t positionW = qtr.readLineWhite(sensorValues);
+  //uint16_t positionW = qtr.readLineWhite(sensorValues);
   uint16_t position = qtr.readLineBlack(sensorValues);
 
   int error = position - Goal;
@@ -83,12 +88,12 @@ void loop()
   
   for (uint8_t i = 0; i < SensorCount; i++)
   {
-    if(sensorValues[i]<850){sensorValues[i]=0;}
+    //if(sensorValues[i]<850){sensorValues[i]=0;}else{sensorValues[i]=1000;}
     Serial.print(sensorValues[i]);
     Serial.print('\t');
   }
-  float leftSpeed = baseSpeed + adjustment;
-  float rightSpeed = baseSpeed - adjustment;
+  float leftSpeed = baseSpeed - adjustment;
+  float rightSpeed = baseSpeed + adjustment;
 
 
   //if(sensorValues[0]==sensorValues[1]==sensorValues[2]==sensorValues[3]==sensorValues[4]==sensorValues[5]==sensorValues[6]==sensorValues[7])
@@ -99,12 +104,37 @@ void loop()
     sharpturn();
     Serial.println("Sharp turn triggered !!!!!!!!!!!!!!!!!!!!!!!!!!!");
     edge = 0;
-  }*/
-  //
-  else {
+  }
+  
+  else {*/
     setMotorLeft(leftSpeed);
     setMotorRight(rightSpeed);
   //}
+
+  //controle direction
+  if(position > 6800 ){allWhite = true;}
+  if(sensorValues[0]>900 &&sensorValues[1]>900 && sensorValues[2]>900 && sensorValues[3]>900 && sensorValues[4]>900 && sensorValues[5]>900 && sensorValues[6]>900 && sensorValues[7]>900){allBlack=true;} 
+
+
+
+  if(allBlack){
+    
+    setMotorLeft(leftSpeed);
+    setMotorRight(rightSpeed);
+    
+
+    allBlack = false;
+  }
+  else if(allWhite){
+    sharpturn();
+    allWhite = false;
+  }
+  else{
+    setMotorLeft(leftSpeed);
+    setMotorRight(rightSpeed);
+  }
+
+
   
   Serial.print(" | Position: ");
   Serial.print(position);
@@ -128,7 +158,7 @@ void setMotorLeft(int speed) {
     digitalWrite(IN2, HIGH);
     speed = -speed;
   }
-  analogWrite(ENA, constrain(speed, 0, 80));
+  analogWrite(ENA, constrain(speed, 0, 90));
 }
 
 void setMotorRight(int speed) {
@@ -140,7 +170,7 @@ void setMotorRight(int speed) {
     digitalWrite(IN4, HIGH);
     speed = -speed;
   }
-  analogWrite(ENB, constrain(speed, 0, 80));
+  analogWrite(ENB, constrain(speed, 0, 90));
 }
 
 void calibration () {
@@ -151,7 +181,7 @@ void calibration () {
   // = ~25 ms per calibrate() call.
   // Call calibrate() 400 times to make calibration take about 10 seconds.
   Serial.println("calibration started");
-  for (uint16_t i = 0; i < 400; i++)
+  for (uint16_t i = 0; i < 200; i++)
   {
     qtr.calibrate();
   }
@@ -162,19 +192,23 @@ void calibration () {
 
 void sharpturn() {
   uint32_t startTime = millis();
-  int turnSpeed = 255;
-  if (lastError < 0) {
+  int turnSpeed = 150;
+  if (lastError > 0) {
     digitalWrite(IN1, HIGH); digitalWrite(IN2, LOW);
-    digitalWrite(IN3, LOW); digitalWrite(IN4, HIGH);
+    digitalWrite(IN3, LOW); digitalWrite(IN4, LOW);
   } else {
-    digitalWrite(IN1, LOW); digitalWrite(IN2, HIGH);
+    digitalWrite(IN1, LOW); digitalWrite(IN2, LOW);
     digitalWrite(IN3, HIGH); digitalWrite(IN4, LOW);
   }
   analogWrite(ENA, turnSpeed);
   analogWrite(ENB, turnSpeed);
 
-  while (millis() - startTime < 500) { // Max 500ms turn
+  while (millis() - startTime < 1000) { // Max 500ms turn
     uint16_t position = qtr.readLineBlack(sensorValues);
     if (position > 2000 && position < 5000) break; // Line found
   }
+}
+
+void ultrason_ON() {
+  
 }
